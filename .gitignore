@@ -10,3 +10,6 @@
 !.yarn/cache
 #.pnp.*
 yarn.lock
+node_modules/
+.env
+.yarn/cache/
