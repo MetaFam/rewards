@@ -9,7 +9,7 @@ const { ApolloClient, InMemoryCache, HttpLink, gql } = apollo
 
 const query = gql`
   query MyCircles($name: String!) {
-    circles(limit: 3, where: {name: {_eq: $name}}) {
+    circles(where: {name: {_eq: $name}}) {
       name
       users(order_by: {created_at: asc}) {
         name
@@ -21,32 +21,38 @@ const query = gql`
   }
 `
 
-const client = new ApolloClient({
-  cache: new InMemoryCache(),
-  link: new HttpLink({
-    uri: 'https://coordinape-prod.hasura.app/v1/graphql',
-    headers: {
-      authorization: process.env.COORDINAPE_AUTH_TOKEN,
-    },
-    fetch,
-  })
-})
-
-
 const args = (
   yargs(process.argv.slice(2))
   .options({
     circle: {
       type: 'string',
       alias: 'c',
-      description: 'Name of the top level Circle',
+      description: 'Name of the top-level Circle [env:TOP_CIRCLE]',
+      default: process.env.TOP_CIRCLE,
       demandOption: true,
     },
     seeds: {
       type: 'number',
       alias: 's',
-      description: 'Number of SEEDs to distribute',
+      description: 'Number of SEEDs to distribute [env:NUM_SEEDS]',
+      default: process.env.NUM_SEEDS,
       demandOption: true,
+    },
+    graphql: {
+      type: 'string',
+      alias: 'g',
+      description: 'Hasura’s GraphQL endpoint [env:GRAPHQL_URL]',
+      default: (
+        process.env.GRAPHQL_URL
+        ?? 'https://coordinape-prod.hasura.app/v1/graphql'
+      ),
+      demandOption: true,
+    },
+    auth: {
+      type: 'string',
+      alias: 'a',
+      description: 'Authorization token [env:AUTH_TOKEN]',
+      default: null,
     },
   })
   .alias('h', 'help')
@@ -54,6 +60,25 @@ const args = (
   // .showHelpOnFail(true, 'HELP!')
 )
 const argv = await args.argv
+
+const headers = {}
+const token = argv.auth ?? process.env.AUTH_TOKEN
+if(token && token.length > 0) {
+  headers.Authorization = (
+    `${!/^bearer\s+/i.test(token) ? 'Bearer ' : ''}${token}`
+  )
+}
+
+const client = new ApolloClient({
+  cache: new InMemoryCache(),
+  link: new HttpLink({
+    uri: argv.graphql,
+    headers,
+    fetch,
+  })
+})
+
+
 
 const getCircle = async (name) => {
   const result = await client.query({
