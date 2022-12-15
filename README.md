@@ -13,3 +13,6 @@ This script calculates a [Coordinape](//coordinape.com) distribution based on a 
 5. Put the name of the top circle which distributes to the subcircles in the `.env` as `TOP_CIRCLE` or on the command line as `-t` or `--top`.
 6. If you run the program without an epoch id, it will list the epochs & their ids.
 7. Specify the epoch id as `-e` or `--epoch`.
+
+The algorithm determines which circle members are subcircles based on whether they are allowed to receive GIVE or not. For each subcircle it will search for an epoch starting and ending on the same days as the top circle. If a subcircle does not have an appropriate epoch, the system will distribute the proportional GIVE to that member's address. Thisis primarily for the Coordinape account.
+

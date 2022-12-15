@@ -7,15 +7,52 @@ import apollo from '@apollo/client'
 import 'dotenv/config'
 const { ApolloClient, InMemoryCache, HttpLink, gql } = apollo
 
-const query = gql`
-  query MyCircles($name: String!) {
+const epochsQuery = gql`
+  query Epochs($name: String!) {
     circles(where: {name: {_eq: $name}}) {
-      name
-      users(order_by: {created_at: asc}) {
-        name
-        give_token_received
-        non_receiver
+      epochs(order_by: {start_date: asc}) {
+        end_date
+        id
+        start_date
+        description
+      }
+    }
+  }
+`
+const circleQuery = gql`
+  query Circle($id: bigint!) {
+    circles(where: {id: {_eq: $id}}) {
+      users {
         address
+        name
+        fixed_non_receiver
+        non_receiver
+      }
+    }
+  }
+`
+
+const distributionQuery = gql`
+  query EpochDistribution($id: bigint!) {
+    epochs(where: {id: {_eq: $id}}) {
+      end_date
+      start_date
+      circle {
+        name
+        id
+
+      }
+      
+      token_gifts {
+        recipient {
+          address
+          name
+        }
+        tokens
+        sender {
+          address
+          name
+        }
       }
     }
   }
@@ -24,19 +61,17 @@ const query = gql`
 const args = (
   yargs(process.argv.slice(2))
   .options({
-    circle: {
+    top: {
       type: 'string',
-      alias: 'c',
+      alias: 't',
       description: 'Name of the top-level Circle [env:TOP_CIRCLE]',
       default: process.env.TOP_CIRCLE,
-      demandOption: true,
     },
     seeds: {
       type: 'number',
       alias: 's',
       description: 'Number of SEEDs to distribute [env:NUM_SEEDS]',
       default: process.env.NUM_SEEDS,
-      demandOption: true,
     },
     graphql: {
       type: 'string',
@@ -54,6 +89,12 @@ const args = (
       description: 'Authorization token [env:AUTH_TOKEN]',
       default: null,
     },
+    epoch: {
+      type: 'number',
+      alias: 'e',
+      description: 'Epoch Id [env:EPOCH_ID]',
+      default: process.env.EPOCH_ID,
+    }
   })
   .alias('h', 'help')
   .help()
@@ -78,29 +119,122 @@ const client = new ApolloClient({
   })
 })
 
-
-
-const getCircle = async (name) => {
+const getEpochs = async (top) => {
   const result = await client.query({
-    query,
-    variables: { name },
+    query: epochsQuery,
+    variables: { name: top },
+  })
+  const [circle] = result.data.circles
+  if(!circle){
+    throw new Error(`No epochs for circle '${top}`)
+  }
+
+  return circle.epochs
+}
+
+const getEpoch = async (id) => {
+  const result = await client.query({
+    query: distributionQuery,
+    variables: { id },
+  })
+  
+  console.log({result})
+
+  const [epoch] = result.data.epochs
+  return epoch
+}
+
+const getCircle = async (id) => {
+  const result = await client.query({
+    query: circleQuery,
+    variables: { id },
   })
   const [circle] = result.data.circles
   return circle
 }
 
+
 const totalReceived = (users) => {
   const total = (
     users.map((user) => user.give_token_received)
-      .reduce((acc, amt) => acc + amt, 0)
+    .reduce((acc, amt) => acc + amt, 0)
   )
-
+  
   if(total === 0) throw new Error('no GIVE allocated')
   return total
 }
+
+const isoDate = (date) => {
+  if(!(date instanceof Date)) {
+    date = new Date(date)
+  }
+
+  return(
+    `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
+  )
+}
+
 const name = argv.circle
+
 const main = async () => {
-  const top = await getCircle(name) 
+  if(argv.epoch == null) {
+    if(!argv.top) {
+      throw new Error('You must specify the top circle name or an epoch ID.')
+    }
+    const epochs = await getEpochs(argv.top)
+    
+    console.log(`Circle: ${argv.top} Epochs`)
+    epochs.forEach(
+      ({
+        start_date: start, end_date: end, id, description
+      }) => {
+        console.log(
+          `${id.toString().padStart(6, ' ')}: ${isoDate(start)}–${isoDate(end)}: ${description ?? ''}`
+        )
+      }
+    )
+    process.exit(5)
+  }
+
+  const epoch = await getEpoch(argv.epoch) 
+
+  const top = await getCircle(epoch.circle.id)
+
+  const circles = top.users.map((user) => {
+    if(!user.fixed_non_receiver){
+      return user
+    }
+  }).filter((u) => !!u)
+
+  console.log({circles})
+  // console.log({g: JSON.stringify(epoch.token_gifts, null, 2)})
+  
+  const gifts = epoch.token_gifts.map((gift) => ({
+    from: {
+      name: gift.recipient.name,
+      address: gift.recipient.address,
+    },
+    to: {
+      name: gift.recipient.name,
+      address: gift.recipient.address,
+    },
+    amount: gift.tokens,
+  }))
+
+  circles.forEach((circle) => {
+    const received = gifts.filter(
+      (gift) => gift.to.address === circle.address
+    )
+    console.log(`${circle.name}: `)
+    received.forEach((gift) => {
+      console.log(`  ${gift.from.name}: ${gift.amount}`)
+    })
+  })
+  
+  new Set(gifts.map(({ to: { name } }) => name))
+
+  // console.log({Set: Array.from(new Set(gifts.map(({ to: { name } }) => name)))})
+
   
   if (!top) new Error(`No circle named: "${name}"`)
 
@@ -165,4 +299,9 @@ const main = async () => {
 
 main().then(
   () => { process.exit(0) }
+).catch(
+  (error) => {
+    console.error(error.message)
+    process.exit(7)
+  }
 )
