@@ -301,6 +301,7 @@ main().then(
   () => { process.exit(0) }
 ).catch(
   (error) => {
+    args.showHelp()
     console.error(error.message)
     process.exit(7)
   }
