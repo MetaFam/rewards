@@ -1,0 +1,21 @@
+#root {
+  max-width: 70rem;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+table {
+  border-collapse: collapse;
+  margin: auto;
+}
+
+th, td {
+  border: 1px solid;
+  padding: 0.25em 0.5em;
+}
+
+tr:nth-of-type(1) > th:nth-of-type(1) {
+  border-top: none;
+  border-left: none;
+}
