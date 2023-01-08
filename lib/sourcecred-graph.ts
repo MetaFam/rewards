@@ -1,18 +1,9 @@
-import { sourcecred as sc } from 'sourcecred'
+import { sourcecred as cred1 } from 'sourcecred'
+import cred2 from 'sourcecred'
+import type { SourceArg, Addresser } from '../types'
 
-export type Addresser = {
-  epoch: () => string
-  top: () => string
-  guild: () => string
-  player: () => string
-  divided_by: () => string
-  distributed_to: () => string
-}
-export type ElementSource = {
-  id: string
-  type?: string
-}
-export type SourceArg = ElementSource | Array<ElementSource>
+// Different imports behave differently between Node & the browser
+const sc = cred1 ?? cred2
 
 // pluginName can be anything, but must only contain letters, numbers, and dashes
 export const pluginName = 'Multilevel-Coordinape'
@@ -128,6 +119,59 @@ export const declaration = (() => {
   }
 })()
 
-export const buildGraph = () => {
+export const buildGraph = ({ epochs }) => {
+  const graph = new sc.core.graph.Graph()
+  const weights = sc.core.weights.empty()
+
+  for (const epoch of epochs) {
+    graph.addNode({
+      address: addr(epoch),
+      description: `Epoch from ${epoch.startTime.toISOString()}–${epoch.endTime.toISOString()}`,
+      timestampMs: epoch.endTime.getTime(),
+    })
+
+    const { top } = epoch
+    graph.addNode({
+      address: addr(top),
+      description: `Top Circle for Epoch ${epoch.startTime.toISOString()}–${epoch.endTime.toISOString()}`,
+      timestampMs: epoch.endTime.getTime(),
+    })
+
+    graph.addEdge({
+      address: addr.divided_by([epoch, top]),
+      timestamp: epoch.endTime.getTime(),
+      src: addr(epoch),
+      dst: addr(top),
+    })
+
+    const distribute = (src) => {
+      for(const dist of src.distribution) {
+        const dest = dist.destination
+        graph.addNode({
+          address: addr(dest),
+          description: `${dest.type}: ${dest.name}`,
+          timestampMs: null,
+        })
   
+        graph.addEdge({
+          address: addr.distributed_to([src, dest]),
+          timestamp: epoch.endTime.getTime(),
+          src: addr(src),
+          dst: addr(dest),
+        })
+
+        weights.edgeWeights.set(
+          addr.distributed_to([src, dest]),
+          { forwards: dist.cost, backwards: 0 },
+        )
+
+        if(dest.distribution) {
+          distribute(dest)
+        }
+      }
+    }
+    
+    distribute(top)
+  }
+  return { graph, weights }
 }

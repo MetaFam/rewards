@@ -1,4 +1,4 @@
-import { Maybe, Table } from './App'
+import { Table } from '../types'
 
 const pullTable = (
   { start, values }: { start: number, values: Array<Array<unknown>>}
