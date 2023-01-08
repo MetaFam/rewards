@@ -24,5 +24,6 @@
   "devDependencies": {
     "@types/gapi": "^0.0.43",
     "@types/google.accounts": "^0.0.5"
-  }
+  },
+  "packageManager": "yarn@3.2.0"
 }
