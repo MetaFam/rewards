@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import type { Maybe, TokenClient, TokenResponse } from '../types';
+import { useCallback, useState } from 'react'
+import type { Maybe, TokenClient, TokenResponse } from '../types'
 
 export const useGAPI = () => {
   const CLIENT_ID = process.env.NEXT_PUBLIC_CLIENT_ID
@@ -56,12 +56,12 @@ export const useGAPI = () => {
   }, [tokenClient])
 
   const logout = useCallback(() => {
-    const token = gapi.client.getToken();
+    const token = gapi.client.getToken()
     if(token != null) {
       window.google.accounts.oauth2.revoke(
         token.access_token,
         () => {
-          window.gapi.client.setToken({ access_token: '' });
+          window.gapi.client.setToken({ access_token: '' })
           setAuthenticated(false)
         },
       )

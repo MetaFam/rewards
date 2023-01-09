@@ -1,6 +1,9 @@
 import { sourcecred as cred1 } from 'sourcecred'
 import cred2 from 'sourcecred'
-import type { SourceArg, Addresser } from '../types'
+import type {
+  SourceArg, Addresser, Epoch, Circle, Participant,
+} from '../types'
+import { randomUUID } from 'crypto'
 
 // Different imports behave differently between Node & the browser
 const sc = cred1 ?? cred2
@@ -62,28 +65,28 @@ export const declaration = (() => {
       pluralName: 'epochs',
       prefix: addr.epoch(),
       defaultWeight: 1,
-      description: 'A period of time in Coordinape over which contributions are measured',
+      description: 'Period of time over which contributions are measured.',
     },
     topCircle: {
       name: 'top',
       pluralName: 'tops',
       prefix: addr.top(),
       defaultWeight: 0,
-      description: 'A circle for disrtibuting to guilds',
+      description: 'A circle for distributing to guilds.',
     },
     guild: {
       name: 'guild',
       pluralName: 'guilds',
       prefix: addr.guild(),
       defaultWeight: 0,
-      description: 'A working group within the organization',
+      description: 'A working group within the organization.',
     },
     player: {
       name: 'player',
       pluralName: 'players',
       prefix: addr.player(),
       defaultWeight: 0,
-      description: 'A participant in the organization',
+      description: 'A participant in the organization.',
     },
   }
 
@@ -119,59 +122,69 @@ export const declaration = (() => {
   }
 })()
 
-export const buildGraph = ({ epochs }) => {
+export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
   const graph = new sc.core.graph.Graph()
   const weights = sc.core.weights.empty()
 
   for (const epoch of epochs) {
     graph.addNode({
       address: addr(epoch),
-      description: `Epoch from ${epoch.startTime.toISOString()}–${epoch.endTime.toISOString()}`,
-      timestampMs: epoch.endTime.getTime(),
+      description: `Epoch from ${epoch.toString()}`,
+      timestampMs: epoch.end.getTime(),
     })
 
     const { top } = epoch
     graph.addNode({
       address: addr(top),
-      description: `Top Circle for Epoch ${epoch.startTime.toISOString()}–${epoch.endTime.toISOString()}`,
-      timestampMs: epoch.endTime.getTime(),
+      description: `Top Circle for Epoch ${epoch.toString()}`,
+      timestampMs: epoch.end.getTime(),
     })
 
     graph.addEdge({
       address: addr.divided_by([epoch, top]),
-      timestamp: epoch.endTime.getTime(),
+      timestamp: epoch.end.getTime(),
       src: addr(epoch),
       dst: addr(top),
     })
 
-    const distribute = (src) => {
+    const distribute = (src: Circle) => {
       for(const dist of src.distribution) {
         const dest = dist.destination
         graph.addNode({
           address: addr(dest),
-          description: `${dest.type}: ${dest.name}`,
+          description: (
+            `${(dest as Participant).type ?? dest}:`
+            + ` ${(dest as Participant).name ?? dest}`
+          ),
           timestampMs: null,
         })
   
         graph.addEdge({
           address: addr.distributed_to([src, dest]),
-          timestamp: epoch.endTime.getTime(),
+          timestamp: epoch.end.getTime(),
           src: addr(src),
           dst: addr(dest),
         })
 
-        weights.edgeWeights.set(
-          addr.distributed_to([src, dest]),
-          { forwards: dist.cost, backwards: 0 },
-        )
+        Object.entries(dist.allotments).forEach(([giver, amount]) => {
+          if(!!epoch.participants?.[giver]) {
+            weights.edgeWeights.set(
+              addr.distributed_to([epoch.participants[giver], src, dest]),
+              { forwards: amount, backwards: 0 },
+            )
+          }
+        })
 
-        if(dest.distribution) {
-          distribute(dest)
+        if((dest as Circle).distribution) {
+          distribute(dest as Circle)
         }
       }
     }
     
-    distribute(top)
+    if(!epoch.top) throw new Error('No top circle set.')
+
+    distribute(epoch.top)
   }
+
   return { graph, weights }
 }

@@ -53,3 +53,30 @@ export type ElementSource = {
 }
 
 export type SourceArg = ElementSource | Array<ElementSource>
+
+export type Name = { name: string }
+
+export type Epoch = DateRange & {
+  toString: () => string
+  top?: Circle
+  circles?: Record<string, Circle>
+  participants?: Record<string, Participant>
+}
+
+export type Circle = {
+  type: 'circle'
+  id: string
+  name: string
+  distribution: Array<{
+    destination: string | Circle | Participant
+    allotments: Record<string, number>
+  }>
+  actors: Array<Participant>
+  actees: Array<string | Participant | Circle>
+}
+
+export type Participant = {
+  type: 'participant'
+  id: string
+  name: string
+}

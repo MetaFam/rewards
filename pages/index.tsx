@@ -2,19 +2,50 @@ import Head from 'next/head'
 import { Inter } from '@next/font/google'
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Maybe, DateRange, Table,
+  Maybe, DateRange, Table, Circle, Participant, Epoch,
 } from '../types'
 import { processSheet } from '../lib/process'
-import { declaration as scDeclaration } from '../lib/sourcecred-graph'
+import { buildGraph, declaration as scDeclaration } from '../lib/sourcecred-graph'
 import styles from '../styles/Home.module.css'
 import { useGAPI } from '../lib/useGAPI'
 
 const inter = Inter({ subsets: ['latin'] })
 
+const Circle = ({ circle }: { circle: Circle }) => (
+  <section key={circle.name}>
+    <h2>{circle.name}</h2>
+    <table>
+      <tr>
+        <th></th>
+        {circle.actees.map((actee) => {
+          const name = (actee as Participant).name ?? actee
+          return <th key={name}>{name}</th>
+        })}
+      </tr>
+      {Object.entries(circle.distribution).map(([actor, row]) => (
+        <tr key={actor}>
+          <th>{actor}</th>
+          {circle.actees.map((actee) => {
+            const title = `${actor}→${actee}`
+            const name = (actee as Participant).name ?? actee as string
+            const allotment = row.allotments[name]
+            return (
+              <td {...{ title }} key={title}>
+                {!!allotment ? allotment : ''}
+              </td>
+            )
+          })}
+        </tr>
+      ))}
+    </table>
+  </section>
+)
+
 export default function Home() {
-  const [epoch, setEpoch] = useState<Maybe<DateRange>>(null)
-  const [tables, setTables] = useState<Maybe<Record<string, Table>>>(null)
-  const [declaration, setDeclaration] = useState<Maybe<string>>(null)
+  const [epoch, setEpoch] = useState<Maybe<Epoch>>(null)
+  const [graph, setGraph] = useState<Maybe<string>>(null)
+  const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
+  const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
 
   const { connect, authenticated } = useGAPI()
 
@@ -22,21 +53,29 @@ export default function Home() {
     const [, id] = (
       sheetURL.match(/^https:\/\/.+\/([^/]+)\/edit.*$/) ?? []
     )
-    if(id) {
-      const { tables, epoch } = await processSheet(id) ?? {}
-      setTables(tables ?? null)
-      setEpoch(epoch ?? null)
+    if(!id) {
+      throw new Error('Invalid Sheet URL.')
     } else {
-      // setTables(<p>Invalid spreadsheet URL <q>{sheetURL}</q>.</p>)
+      const { epoch } = await processSheet(id) ?? {}
+      if(!epoch) throw new Error('Failed to extract epoch.')
+      setEpoch(epoch)
+
+      const { graph } = await buildGraph({ epochs: [epoch] })
+      setGraph(graph)
     }
   }, [])
 
   useEffect(() => {
     const declaration = JSON.stringify(scDeclaration, null, 2)
     const declBlob = new Blob([declaration], { type: 'text/json' })
-    setDeclaration(window.URL.createObjectURL(declBlob))
-  }, [tables])
+    setDeclarationURL(window.URL.createObjectURL(declBlob))
+  }, [])
 
+  useEffect(() => {
+    const graphJSON = JSON.stringify(graph, null, 2)
+    const graphBlob = new Blob([graphJSON], { type: 'text/json' })
+    setGraphURL(window.URL.createObjectURL(graphBlob))
+  }, [graph])
 
   return (
     <>
@@ -80,51 +119,35 @@ export default function Home() {
               />
             </form>
           </li>
-          {tables && Object.keys(tables).length > 0 && (
+          {epoch && Object.keys(epoch.circles ?? {}).length > 0 && (
             <li>
               Data:
               {epoch && (
-                <section><>Epoch: {epoch?.toString()}</></section>
+                <>
+                  <section><>Epoch: {epoch.toString()}</></section>
+                  {Object.values(epoch.circles ?? {}).map((circle) => (
+                    <Circle key={circle.name} {...{ circle }}/>
+                  ))}
+                </>
               )}
-              {Object.values(tables).map((table) => (
-                <section key={table.name}>
-                  <h2>{table.name}</h2>
-                  <table>
-                    <tr>
-                      <th></th>
-                      {table.cols.map((col) => (
-                        <th key={col}>{col}</th>
-                      ))}
-                    </tr>
-                    {Object.entries(table.distribution).map(([actor, row]) => (
-                      <tr key={actor}>
-                        <th>{actor}</th>
-                        {table.cols.map((col) => {
-                          const title = `${actor}→${col}`
-                          return (
-                            <td {...{ title }} key={title}>
-                              {row[col] === 0 ? '' : row[col]}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </table>
-                </section>
-              ))}
             </li>
           )}
           <li>
             <ul>
-              {declaration && (
-                <li><a href={declaration} target="_blank" rel="noreferrer">
-                  SourceCred Declaration
-                </a></li>
+              {declarationURL && (
+                <li>
+                  <a
+                    href={declarationURL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    SourceCred Declaration
+                  </a>
+                </li>
               )}
             </ul>
           </li>
         </ol>
-
       </main>
     </>
   )
