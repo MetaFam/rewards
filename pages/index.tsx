@@ -2,12 +2,13 @@ import Head from 'next/head'
 import { Inter } from '@next/font/google'
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Maybe, DateRange, Table, Circle, Participant, Epoch,
+  Maybe, Circle, Participant, Epoch,
 } from '../types'
 import { processSheet } from '../lib/process'
 import { buildGraph, declaration as scDeclaration } from '../lib/sourcecred-graph'
 import styles from '../styles/Home.module.css'
 import { useGAPI } from '../lib/useGAPI'
+import Script from 'next/script'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -47,7 +48,7 @@ export default function Home() {
   const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
 
-  const { connect, authenticated } = useGAPI()
+  const { connect, authenticated, initGAPI, initGSI } = useGAPI()
 
   const extractTables = useCallback(async (sheetURL: string) => {
     const [, id] = (
@@ -81,8 +82,14 @@ export default function Home() {
     <>
       <Head>
         <title>Coorditang</title>
-        <meta name="description" content="Multitiered Coordinape Distribution"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <meta
+          name="description"
+          content="Multitiered Coordinape Distribution"
+        />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1"
+        />
         <link rel="shortcut icon" href="/logo.svg"/>
       </Head>
       <main className={styles.main}>
@@ -114,7 +121,9 @@ export default function Home() {
               <input
                 type="submit"
                 value="Process"
-                title={authenticated ? 'Process Spreadsheet' : 'Authenticate'}
+                title={
+                  authenticated ? 'Process Spreadsheet' : 'Authenticate'
+                }
                 disabled={!authenticated}
               />
             </form>
@@ -149,6 +158,16 @@ export default function Home() {
           </li>
         </ol>
       </main>
+      <Script
+        strategy="lazyOnload"
+        src="https://apis.google.com/js/api.js"
+        onLoad={initGAPI}
+      />
+      <Script
+        strategy="lazyOnload"
+        src="https://accounts.google.com/gsi/client"
+        onLoad={initGSI}
+      />
     </>
   )
 }
