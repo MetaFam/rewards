@@ -33,11 +33,6 @@ export type Table = {
   endRow: number
 }
 
-export type DateRange = {
-  start: Date
-  end: Date
-}
-
 export type Addresser = {
   epoch: (arg?: any) => string
   top: (arg?: any) => string
@@ -54,25 +49,45 @@ export type ElementSource = {
 
 export type SourceArg = ElementSource | Array<ElementSource>
 
-export type Name = { name: string }
-
-export type Epoch = DateRange & {
+export type DateRange = {
+  start: Date
+  end: Date
   toString: () => string
-  top?: Circle
-  circles?: Record<string, Circle>
-  participants?: Record<string, Participant>
 }
 
-export type Circle = {
+export type Epoch = DateRange & {
+  top: Circle
+  circles: Record<string, Circle>
+  participants: Record<string, Participant>
+}
+
+export type CircleBase = {
   type: 'circle'
   id: string
   name: string
-  distribution: Array<{
-    destination: string | Circle | Participant
-    allotments: Record<string, number>
-  }>
   actors: Array<Participant>
-  actees: Array<string | Participant | Circle>
+}
+
+export type UnresolvedCircle = CircleBase & {
+  distribution: Record<
+    string,
+    {
+      destination: string
+      allotments: Record<string, number>
+    }
+  >
+  actees: Array<string>
+}
+
+export type Circle = CircleBase & {
+  distribution: Record<
+    string,
+    {
+      destination: Circle | Participant
+      allotments: Record<string, number>
+    }
+  >
+  actees: Array<Participant | Circle>
 }
 
 export type Participant = {

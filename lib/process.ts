@@ -1,4 +1,4 @@
-import { Circle, Participant } from '../types'
+import { Circle, Maybe, Participant, UnresolvedCircle } from '../types'
 
 class TableSearchError extends Error {}
 
@@ -42,14 +42,19 @@ const pullCircle = (
     type: 'circle' as 'circle',
     id: name.replace(/[^a-z-]/gi, '-'),
     name,
-    distribution: actees.map((actee) => ({
-      destination: actee,
-      allotments: Object.fromEntries(
-        actors.map((actor) => (
-          [actor.name, distribution[actor.name]?.[actee] ?? 0]
-        )),
-      ),
-    })),
+    distribution: Object.fromEntries(
+      actees.map((actee) => [
+        actee,
+        {
+          destination: actee,
+          allotments: Object.fromEntries(
+            actors.map((actor) => (
+              [actor.name, distribution[actor.name]?.[actee] ?? 0]
+            )),
+          ),
+        },
+      ])
+    ),
     actors,
     actees,
   }
@@ -65,7 +70,7 @@ const pullCircle = (
   }
 }
 
-const dateRangeFor = (date: string) => {
+export const dateRangeFor = (date: string) => {
   if(!/^\S+ \d{4}/.test(date)) return null
 
   const [month, year] = date.split(' ')
@@ -109,17 +114,17 @@ export const processSheet = async (id: string) => {
 
   const { values, range } = response.result
   if(!values || values.length === 0) {
-    throw new Error('No values found in spreadsheet "${id}".')
+    throw new Error(`No values found in spreadsheet "${id}".`)
   }
 
   const [, sheetName] = range.match(/^(?:'([^']+)'|([^']\S+))!.*$/) ?? []
 
-  const epoch = dateRangeFor(sheetName)
+  const span = dateRangeFor(sheetName)
 
-  if(!epoch) throw new Error(`Unparsable "${sheetName}".`)
+  if(!span) throw new Error(`Unparsable "${sheetName}".`)
 
-  const circles: Record<string, Circle> = {}
-  let topName = null
+  const unresCircles: Record<string, UnresolvedCircle> = {}
+  let topName: Maybe<string> = null
   try {
     let start = 0
     while(true) {
@@ -128,9 +133,9 @@ export const processSheet = async (id: string) => {
       topName ??= info.name
       if(
         topName === info.name
-        || circles[topName].actees.includes(info.name)
+        || unresCircles[topName].actees.includes(info.name)
       ) {
-        circles[info.name] = info.circle
+        unresCircles[info.name] = info.circle
       } else {
         console.warn(
           `Circle "${info.name}" is not a column of "${topName}".`
@@ -143,9 +148,59 @@ export const processSheet = async (id: string) => {
 
   if(!topName) throw new Error('No top circle found.')
 
-  Object.assign(epoch, {
-    circles,
+  const circles: Record<string, Circle> = {}
+
+  Object.entries(unresCircles).forEach(
+    ([name, circle]) => {
+      if(name === topName) return
+
+      circles[name] = (
+        Object.assign(
+          {},
+          circle,
+          { actees: circle.actees.map(
+            (actee) => participantNamed(actee)
+          ) },
+          { distribution: Object.fromEntries(
+            Object.entries(circle.distribution).map(
+              ([name, dist]) => [
+                name,
+                {
+                  destination: participantNamed(dist.destination),
+                  allotments: dist.allotments,
+                },
+              ]
+            )
+          ) },
+        )
+      )
+    }
+  )
+
+  circles[topName] = (
+    Object.assign(
+      {},
+      unresCircles[topName],
+      { actees: unresCircles[topName].actees.map(
+        (actee) => circles[actee]
+      ) },
+      { distribution: Object.fromEntries(
+        Object.entries(unresCircles[topName].distribution).map(
+          ([name, dist]) => [
+            name,
+            {
+              destination: circles[dist.destination],
+              allotments: dist.allotments,
+            },
+          ]
+        )
+      ) },
+    )
+  )
+
+  const epoch = Object.assign({}, span, {
     top: circles[topName],
+    circles,
     participants,
   })
 

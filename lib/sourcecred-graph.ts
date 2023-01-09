@@ -148,39 +148,37 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
     })
 
     const distribute = (src: Circle) => {
-      for(const dist of src.distribution) {
-        const dest = dist.destination
-        graph.addNode({
-          address: addr(dest),
-          description: (
-            `${(dest as Participant).type ?? dest}:`
-            + ` ${(dest as Participant).name ?? dest}`
-          ),
-          timestampMs: null,
-        })
-  
-        graph.addEdge({
-          address: addr.distributed_to([src, dest]),
-          timestamp: epoch.end.getTime(),
-          src: addr(src),
-          dst: addr(dest),
-        })
+      Object.entries(src.distribution).map(
+        ([, { destination: dest, allotments: allots }]) => {
+          graph.addNode({
+            address: addr(dest),
+            description: `${dest.type}:${dest.name}`,
+            timestampMs: null,
+          })
 
-        Object.entries(dist.allotments).forEach(([giver, amount]) => {
-          if(!!epoch.participants?.[giver]) {
-            weights.edgeWeights.set(
-              addr.distributed_to([epoch.participants[giver], src, dest]),
-              { forwards: amount, backwards: 0 },
-            )
+          graph.addEdge({
+            address: addr.distributed_to([src, dest]),
+            timestamp: epoch.end.getTime(),
+            src: addr(src),
+            dst: addr(dest),
+          })
+
+          Object.entries(allots).forEach(([giver, amount]) => {
+            if(!!epoch.participants?.[giver]) {
+              weights.edgeWeights.set(
+                addr.distributed_to([epoch.participants[giver], src, dest]),
+                { forwards: amount, backwards: 0 },
+              )
+            }
+          })
+
+          if((dest as Circle).distribution) {
+            distribute(dest as Circle)
           }
-        })
-
-        if((dest as Circle).distribution) {
-          distribute(dest as Circle)
         }
-      }
+      )
     }
-    
+
     if(!epoch.top) throw new Error('No top circle set.')
 
     distribute(epoch.top)

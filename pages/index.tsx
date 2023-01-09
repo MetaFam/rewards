@@ -1,6 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
 import Head from 'next/head'
-import { Inter } from '@next/font/google'
 import { useCallback, useEffect, useState } from 'react'
 import Script from 'next/script'
 import {
@@ -15,25 +14,26 @@ import styles from '../styles/Home.module.css'
 
 const Circle = ({ circle }: { circle: Circle }) => (
   <section key={circle.name}>
-    <h2>{circle.name}</h2>
+    <h3>{circle.name}</h3>
     <table className={styles.table}>
       <tr>
         <th></th>
         {circle.actees.map((actee) => {
-          const name = (actee as Participant).name ?? actee
+          const { name } = actee
           return <th key={name}>{name}</th>
         })}
       </tr>
-      {Object.entries(circle.distribution).map(([actor, row]) => (
+      {circle.actors.map(({ name: actor }) => (
         <tr key={actor}>
           <th>{actor}</th>
-          {circle.actees.map((actee) => {
+          {circle.actees.map(({ name: actee }) => {
+            const { allotments: allots } = circle.distribution[actee]
             const title = `${actor}→${actee}`
-            const name = (actee as Participant).name ?? actee as string
-            const allotment = row.allotments[name]
+            const allot = allots[actor]
+
             return (
               <td {...{ title }} key={title}>
-                {!!allotment ? allotment : ''}
+                {!!allot ? allot : ''}
               </td>
             )
           })}
@@ -49,7 +49,9 @@ export default function Home() {
   const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
 
-  const { connect, authenticated, initGAPI, initGSI } = useGAPI()
+  const {
+    connect, authenticated, initGAPI, initGSI, tokenClient, 
+  } = useGAPI()
 
   const extractTables = useCallback(async (sheetURL: string) => {
     const [, id] = (
@@ -58,11 +60,11 @@ export default function Home() {
     if(!id) {
       throw new Error('Invalid Sheet URL.')
     } else {
+      console.debug('processing sheet')
       const { epoch } = await processSheet(id) ?? {}
+      console.info({ epoch })
       if(!epoch) throw new Error('Failed to extract epoch.')
       setEpoch(epoch)
-
-      console.info({ epoch })
 
       const { graph } = await buildGraph({ epochs: [epoch] })
       setGraph(graph)
@@ -112,7 +114,7 @@ export default function Home() {
               <input
                 type="submit"
                 value={`Connect${authenticated ? 'ed' : ''} to Google`}
-                disabled={authenticated}
+                disabled={authenticated || !tokenClient}
               />
             </form>
           </li>
@@ -141,12 +143,12 @@ export default function Home() {
             </form>
           </li>
           {epoch && Object.keys(epoch.circles ?? {}).length > 0 && (
-            <li>
-              Data:
+            <li className={styles.outline}>
+              <h2>Data</h2>
               {epoch && (
                 <>
-                  <section><>Epoch: {epoch.toString()}</></section>
-                  {Object.values(epoch.circles ?? {}).map((circle) => (
+                  <h3>Epoch: {epoch.toString()}</h3>
+                  {Object.values(epoch.circles).map((circle) => (
                     <Circle key={circle.name} {...{ circle }}/>
                   ))}
                 </>
