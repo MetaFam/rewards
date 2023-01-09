@@ -17,8 +17,6 @@ export const useGAPI = () => {
   const initGAPI = useCallback(() => {
     if(!API_KEY) throw new Error('GAPI `$API_KEY` isn’t set.')
 
-    console.debug({ gapi: window.gapi })
-
     const initializeGapiClient = async () => {
       await window.gapi.client.init({
         apiKey: API_KEY,
@@ -31,8 +29,6 @@ export const useGAPI = () => {
 
   const initGSI = useCallback(() => {
     if(!CLIENT_ID) throw new Error('OAuth `$CLIENT_ID` isn’t set.')
-
-    console.debug({ google: window.google })
 
     setTokenClient(
       window.google.accounts.oauth2.initTokenClient({
@@ -60,7 +56,7 @@ export const useGAPI = () => {
   }, [tokenClient])
 
   const logout = useCallback(() => {
-    const token = gapi.client.getToken()
+    const token = window.gapi.client.getToken()
     if(token != null) {
       window.google.accounts.oauth2.revoke(
         token.access_token,

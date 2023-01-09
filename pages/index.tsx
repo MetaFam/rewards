@@ -1,21 +1,22 @@
+/* eslint-disable @next/next/no-img-element */
 import Head from 'next/head'
 import { Inter } from '@next/font/google'
 import { useCallback, useEffect, useState } from 'react'
+import Script from 'next/script'
 import {
   Maybe, Circle, Participant, Epoch,
 } from '../types'
 import { processSheet } from '../lib/process'
-import { buildGraph, declaration as scDeclaration } from '../lib/sourcecred-graph'
-import styles from '../styles/Home.module.css'
+import {
+  buildGraph, declaration as scDeclaration
+} from '../lib/sourcecred-graph'
 import { useGAPI } from '../lib/useGAPI'
-import Script from 'next/script'
-
-const inter = Inter({ subsets: ['latin'] })
+import styles from '../styles/Home.module.css'
 
 const Circle = ({ circle }: { circle: Circle }) => (
   <section key={circle.name}>
     <h2>{circle.name}</h2>
-    <table>
+    <table className={styles.table}>
       <tr>
         <th></th>
         {circle.actees.map((actee) => {
@@ -61,6 +62,8 @@ export default function Home() {
       if(!epoch) throw new Error('Failed to extract epoch.')
       setEpoch(epoch)
 
+      console.info({ epoch })
+
       const { graph } = await buildGraph({ epochs: [epoch] })
       setGraph(graph)
     }
@@ -92,8 +95,15 @@ export default function Home() {
         />
         <link rel="shortcut icon" href="/logo.svg"/>
       </Head>
+      <header>
+        <img
+          id={styles.splash}
+          src="/splash.paths.svg"
+          alt="Coorditang"
+        />
+      </header>
       <main className={styles.main}>
-        <ol>
+        <ol id={styles.steps}>
           <li>
             <form onSubmit={((evt) => {
               evt.preventDefault()
@@ -106,26 +116,28 @@ export default function Home() {
               />
             </form>
           </li>
-          <li>
-            Spreadsheet URL:{' '}
+          <li className={styles.flex}>
             <form onSubmit={(async (evt) => {
-              evt.preventDefault()
+                evt.preventDefault()
 
-              const form = evt.target as HTMLFormElement
-              const sheet = (
-                form.elements.namedItem('sheet') as HTMLInputElement
-              )
-              await extractTables(sheet.value)
-            })}>
-              <input id="sheet"/>
-              <input
-                type="submit"
-                value="Process"
-                title={
-                  authenticated ? 'Process Spreadsheet' : 'Authenticate'
-                }
-                disabled={!authenticated}
-              />
+                const form = evt.target as HTMLFormElement
+                const sheet = (
+                  form.elements.namedItem('sheet') as HTMLInputElement
+                )
+                await extractTables(sheet.value)
+              })}>
+              <fieldset id={styles.sheet}>
+                <legend>Spreadsheet URL</legend>
+                <input id="sheet"/>
+                <input
+                  type="submit"
+                  value="Process"
+                  title={
+                    authenticated ? 'Process Spreadsheet' : 'Authenticate'
+                  }
+                  disabled={!authenticated}
+                />
+              </fieldset>
             </form>
           </li>
           {epoch && Object.keys(epoch.circles ?? {}).length > 0 && (
