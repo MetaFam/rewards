@@ -2,8 +2,8 @@ import { sourcecred as cred1 } from 'sourcecred'
 import cred2 from 'sourcecred'
 import type {
   SourceArg, Addresser, Epoch, Circle, Participant,
-} from '../types'
-import { randomUUID } from 'crypto'
+} from '../../types'
+import { toId, participantNamed } from '../process';
 
 // Different imports behave differently between Node & the browser
 const sc = cred1 ?? cred2
@@ -11,7 +11,7 @@ const sc = cred1 ?? cred2
 // pluginName can be anything, but must only contain letters, numbers, and dashes
 export const pluginName = 'Multilevel-Coordinape'
 
-export const addressPrefix = ['wtf', 'metagame', 'coordinape']
+export const addressPrefix = ['wtf', 'metagame', 'coorditang']
 export const nodePrefix = sc.core.graph.NodeAddress.fromParts(addressPrefix)
 export const edgePrefix = sc.core.graph.EdgeAddress.fromParts(addressPrefix)
 
@@ -156,18 +156,22 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
             timestampMs: null,
           })
 
-          graph.addEdge({
-            address: addr.distributed_to([src, dest]),
-            timestamp: epoch.end.getTime(),
-            src: addr(src),
-            dst: addr(dest),
-          })
-
           Object.entries(allots).forEach(([giver, amount]) => {
-            if(!!epoch.participants?.[giver]) {
+            const participant = participantNamed(giver)
+            if(amount > 0) {
+              const address = addr.distributed_to(
+                [participant, src, dest]
+              )
+
+              graph.addEdge({
+                address,
+                timestamp: epoch.end.getTime(),
+                src: addr(src),
+                dst: addr(dest),
+              })
+
               weights.edgeWeights.set(
-                addr.distributed_to([epoch.participants[giver], src, dest]),
-                { forwards: amount, backwards: 0 },
+                address, { forwards: amount, backwards: 0 },
               )
             }
           })
@@ -186,3 +190,19 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
 
   return { graph, weights }
 }
+
+export const identityProposals = (
+  { pluginName, participants }:
+  { pluginName: string, participants: Array<Participant> }
+) => (
+  participants.map((participant) => ({
+    // "name" can only contain letters, numbers, and dashes
+    name: toId(participant.name),
+    pluginName,
+    type: 'USER', // The options are USER, BOT, ORGANIZATION, PROJECT
+    alias: {
+      description: `participant: ${participant.name}`,
+      address: addr(participant),
+    }
+  }))
+)

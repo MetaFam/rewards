@@ -3,11 +3,10 @@ import { Circle, Maybe, Participant, UnresolvedCircle } from '../types'
 class TableSearchError extends Error {}
 
 const pullCircle = (
-  { start, values, participantNamed }:
+  { start, values }:
   {
     start: number
-    values: Array<Array<unknown>>
-    participantNamed: (name: string) => Participant
+    values: Array<Array<string>>
   }
 ) => {
   while(start < values.length && values[start].length === 0) {
@@ -15,45 +14,52 @@ const pullCircle = (
   }
 
   let end = start
-  while(end + 1 < values.length && values[end + 1].length !== 0) {
+  while(
+    end + 1 < values.length
+    && values[end + 1].length !== 0
+    && values[end + 1][0] !== ''
+  ) {
     end++
   }
 
-  if(start === end) {
+  if(start + 1 >= end) {
     throw new TableSearchError(`No table found after line #${start}`)
   }
 
   const name = values[start][0] as string
-  const actees = values[start].slice(1, -1) as Array<string>
+  const actees = values[start].slice(1, -1)
   const actors: Array<Participant> = []
   const distribution = Object.fromEntries(
     values.slice(start + 1, end).map((row) => {
-      const actor = row[0] as string
-      actors.push(participantNamed(actor))
+      const actor = participantNamed(row[0] as string)
+      actors.push(actor)
       const dist = Object.fromEntries(
         row.slice(1, -1).map((num, idx) => (
-          [actees[idx], Number(num)]
+          [toId(actees[idx]), Number(num)]
         ))
       )
-      return [actor, dist]
+      return [actor.id, dist]
     })
   )
   const circle = {
     type: 'circle' as 'circle',
-    id: name.replace(/[^a-z-]/gi, '-'),
+    id: toId(name),
     name,
     distribution: Object.fromEntries(
-      actees.map((actee) => [
-        actee,
-        {
-          destination: actee,
-          allotments: Object.fromEntries(
-            actors.map((actor) => (
-              [actor.name, distribution[actor.name]?.[actee] ?? 0]
-            )),
-          ),
-        },
-      ])
+      actees.map((actee) => {
+        const id = toId(actee)
+        return [
+          id,
+          {
+            destination: id,
+            allotments: Object.fromEntries(
+              actors.map((actor) => (
+                [actor.id, distribution[actor.id]?.[id] ?? 0]
+              )),
+            ),
+          },
+        ]
+      })
     ),
     actors,
     actees,
@@ -74,9 +80,7 @@ export const dateRangeFor = (date: string) => {
   if(!/^\S+ \d{4}/.test(date)) return null
 
   const [month, year] = date.split(' ')
-  
   const start = new Date(`${month} 1, ${year}`)
-  
   const end = new Date(start)
   end.setMonth(end.getMonth() + 1)
   end.setDate(end.getDate() - 1)
@@ -93,19 +97,28 @@ export const dateRangeFor = (date: string) => {
   }
 }
 
-export const processSheet = async (id: string) => {
-  const participants: Record<string, Participant> = {}
+export const toId = (str: string) => (
+  str.replace(/[^\da-z-]/gi, '-').toLowerCase()
+)
 
-  const participantNamed = (name: string) => {
-    let participant = participants[name]
-    if(!participant) {
-      participants[name] = participant = (
-        { type: 'participant', name, id: crypto.randomUUID() }
-      )
-    }
-    return participant
+export const participants: Record<string, Participant> = {}
+export const participantNamed = (name: string) => {
+  const id = toId(name)
+
+  if(!/^[\da-z-]+$/.test(id)) {
+    throw new Error(`Invalid participant name "${name}".`)
   }
 
+  let participant = participants[id]
+  if(!participant) {
+    participants[id] = participant = (
+      { type: 'participant', name, id }
+    )
+  }
+  return participant
+}
+
+export const getSheet = async (id: string) => {
   const api = (gapi.client as any).sheets
   const response = await api.spreadsheets.values.get({
     spreadsheetId: id,
@@ -119,26 +132,36 @@ export const processSheet = async (id: string) => {
 
   const [, sheetName] = range.match(/^(?:'([^']+)'|([^']\S+))!.*$/) ?? []
 
+  return (
+    { sheetName, values } as
+    { sheetName: string, values: Array<Array<string>>}
+  )
+}
+export const processSheet = async (
+  { sheetName, values }:
+  { sheetName: string, values: Array<Array<string>> }
+) => {
   const span = dateRangeFor(sheetName)
 
   if(!span) throw new Error(`Unparsable "${sheetName}".`)
 
   const unresCircles: Record<string, UnresolvedCircle> = {}
-  let topName: Maybe<string> = null
+  let topId: Maybe<string> = null
   try {
     let start = 0
     while(true) {
-      const info = pullCircle({ start, values, participantNamed })
+      const info = pullCircle({ start, values })
+      const id = toId(info.name)
       start = info.endRow + 1
-      topName ??= info.name
+      topId ??= id
       if(
-        topName === info.name
-        || unresCircles[topName].actees.includes(info.name)
+        topId === id
+        || unresCircles[topId].actees.map(toId).includes(id)
       ) {
-        unresCircles[info.name] = info.circle
+        unresCircles[id] = info.circle
       } else {
         console.warn(
-          `Circle "${info.name}" is not a column of "${topName}".`
+          `Circle "${info.name}" ("${id}") is not a column of "${topId}".`
         )
       }
     }
@@ -146,21 +169,19 @@ export const processSheet = async (id: string) => {
     if(!(err instanceof TableSearchError)) throw err
   }
 
-  if(!topName) throw new Error('No top circle found.')
+  if(!topId) throw new Error('No top circle found.')
 
   const circles: Record<string, Circle> = {}
 
   Object.entries(unresCircles).forEach(
     ([name, circle]) => {
-      if(name === topName) return
+      if(name === topId) return
 
       circles[name] = (
         Object.assign(
           {},
           circle,
-          { actees: circle.actees.map(
-            (actee) => participantNamed(actee)
-          ) },
+          { actees: circle.actees.map(participantNamed) },
           { distribution: Object.fromEntries(
             Object.entries(circle.distribution).map(
               ([name, dist]) => [
@@ -177,15 +198,15 @@ export const processSheet = async (id: string) => {
     }
   )
 
-  circles[topName] = (
+  circles[topId] = (
     Object.assign(
       {},
-      unresCircles[topName],
-      { actees: unresCircles[topName].actees.map(
-        (actee) => circles[actee]
+      unresCircles[topId],
+      { actees: unresCircles[topId].actees.map(
+        (actee) => circles[toId(actee)]
       ) },
       { distribution: Object.fromEntries(
-        Object.entries(unresCircles[topName].distribution).map(
+        Object.entries(unresCircles[topId].distribution).map(
           ([name, dist]) => [
             name,
             {
@@ -199,10 +220,12 @@ export const processSheet = async (id: string) => {
   )
 
   const epoch = Object.assign({}, span, {
-    top: circles[topName],
+    type: 'epoch',
+    id: toId(sheetName),
+    top: circles[topId],
     circles,
     participants,
   })
 
-  return { sheetName, circles, epoch }
+  return { sheetName, circles, epoch, data: values }
 }

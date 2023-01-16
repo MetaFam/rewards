@@ -51,8 +51,6 @@ export const useGAPI = () => {
   const connect = useCallback(async () => {
     if(!tokenClient) throw new Error('Token client isn’t set.')
 
-    console.info({ tok: window.gapi.client.getToken() })
-
     const existing = window.gapi.client.getToken() != null
     tokenClient.requestAccessToken({
       prompt: existing ? '' : 'consent'

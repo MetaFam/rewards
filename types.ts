@@ -95,3 +95,15 @@ export type Participant = {
   id: string
   name: string
 }
+
+export type NamedScore = {
+  name: string
+  score: number
+}
+
+export type CredScore = {
+  identity: {
+    name: string
+  }
+  cred: number
+}

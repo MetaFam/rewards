@@ -3,51 +3,64 @@ import Head from 'next/head'
 import { useCallback, useEffect, useState } from 'react'
 import Script from 'next/script'
 import {
-  Maybe, Circle, Participant, Epoch,
+  Maybe, Circle, Epoch, NamedScore, CredScore,
 } from '../types'
-import { processSheet } from '../lib/process'
+import { processSheet, participants, getSheet, toId } from '../lib/process'
 import {
-  buildGraph, declaration as scDeclaration
-} from '../lib/sourcecred-graph'
+  buildGraph, declaration as scDeclaration, pluginName, identityProposals
+} from '../lib/sourcecred/graph';
+import {
+  credRank,
+  graphAPI
+} from '../lib/sourcecred/test'
 import { useGAPI } from '../lib/useGAPI'
 import styles from '../styles/Home.module.css'
 
 const Circle = ({ circle }: { circle: Circle }) => (
   <section key={circle.name}>
     <h3>{circle.name}</h3>
-    <table className={styles.table}>
-      <tr>
+    <table className={
+      ['table', 'notch'].map((p) => styles[p]).join(' ')
+    }>
+      <thead><tr>
         <th></th>
-        {circle.actees.map((actee) => {
-          const { name } = actee
-          return <th key={name}>{name}</th>
-        })}
-      </tr>
-      {circle.actors.map(({ name: actor }) => (
-        <tr key={actor}>
-          <th>{actor}</th>
-          {circle.actees.map(({ name: actee }) => {
-            const { allotments: allots } = circle.distribution[actee]
-            const title = `${actor}→${actee}`
-            const allot = allots[actor]
+        {circle.actees.map(({ name }) => (
+          <th key={name}>{name}</th>
+        ))}
+      </tr></thead>
+      <tbody>
+        {circle.actors.map(({ id: actorId, name: actor }) => (
+          <tr key={actorId}>
+            <th>{actor}</th>
+            {circle.actees.map(({ id: acteeId, name: actee }) => {
+              const { allotments: allots } = (
+                circle.distribution[acteeId] ?? {}
+              )
+              const title = `${actor}→${actee}`
+              const allot = allots?.[actorId]
 
-            return (
-              <td {...{ title }} key={title}>
-                {!!allot ? allot : ''}
-              </td>
-            )
-          })}
-        </tr>
-      ))}
+              return (
+                <td {...{ title }} key={title}>
+                  {!!allot ? allot : ''}
+                </td>
+              )
+            })}
+          </tr>
+        ))}
+      </tbody>
     </table>
   </section>
 )
 
 export default function Home() {
   const [epoch, setEpoch] = useState<Maybe<Epoch>>(null)
-  const [graph, setGraph] = useState<Maybe<string>>(null)
   const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
+  const [epochURL, setEpochURL] = useState<Maybe<string>>(null)
+  const [sheetDataURL, setSheetDataURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
+  const [credDistribution, setDist] = (
+    useState<Maybe<Array<NamedScore>>>(null)
+  )
 
   const {
     connect, authenticated, initGAPI, initGSI, tokenClient, 
@@ -60,14 +73,17 @@ export default function Home() {
     if(!id) {
       throw new Error('Invalid Sheet URL.')
     } else {
-      console.debug('processing sheet')
-      const { epoch } = await processSheet(id) ?? {}
-      console.info({ epoch })
+      const { epoch, data } = await processSheet(await getSheet(id)) ?? {}
       if(!epoch) throw new Error('Failed to extract epoch.')
       setEpoch(epoch)
 
-      const { graph } = await buildGraph({ epochs: [epoch] })
-      setGraph(graph)
+      const sheetJSON = JSON.stringify(data, null, 2)
+      const sheetBlob = new Blob([sheetJSON], { type: 'text/json' })
+      setSheetDataURL(window.URL.createObjectURL(sheetBlob))
+
+      const epochJSON = JSON.stringify(epoch, null, 2)
+      const epochBlob = new Blob([epochJSON], { type: 'text/json' })
+      setEpochURL(window.URL.createObjectURL(epochBlob))
     }
   }, [])
 
@@ -78,10 +94,37 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const graphJSON = JSON.stringify(graph, null, 2)
-    const graphBlob = new Blob([graphJSON], { type: 'text/json' })
-    setGraphURL(window.URL.createObjectURL(graphBlob))
-  }, [graph])
+    const test = async () => {
+      if(epoch) {
+        const weightedGraph = await buildGraph({ epochs: [epoch] })
+        const graphJSON = JSON.stringify(weightedGraph, null, 2)
+        const graphBlob = new Blob([graphJSON], { type: 'text/json' })
+        setGraphURL(window.URL.createObjectURL(graphBlob))
+
+        const identities = identityProposals({
+          pluginName, participants: Object.values(participants)
+        })
+
+        const graphAPIOutput = await graphAPI({
+          pluginId: pluginName,
+          weightedGraph,
+          declaration: scDeclaration,
+          identityProposals: identities,
+        })
+
+        const { credGrainView } = await credRank({
+          ledger: graphAPIOutput.ledger, weightedGraph
+        })
+        setDist(credGrainView.participants().map(
+          ({ identity: { name }, cred: score }: CredScore) => (
+            { name, score }
+          )
+        ))
+      }
+    }
+
+    test()
+  }, [epoch])
 
   return (
     <>
@@ -130,7 +173,10 @@ export default function Home() {
               })}>
               <fieldset id={styles.sheet}>
                 <legend>Spreadsheet URL</legend>
-                <input id="sheet"/>
+                <input
+                  id="sheet"
+                  defaultValue="https://docs.google.com/spreadsheets/d/1QPObFhGUpbz9ZY2P5n0-g0wQssJZXy3EISFmVOewQho/edit#gid=0"
+                />
                 <input
                   type="submit"
                   value="Process"
@@ -155,8 +201,52 @@ export default function Home() {
               )}
             </li>
           )}
-          <li>
+          {credDistribution && (
+            <li className={styles.outline}>
+              <h2>Distribution</h2>
+
+              <table className={styles.table}>
+                <thead><tr>
+                  <th>Participant</th>
+                  <th>Score</th>
+                </tr></thead>
+                <tbody>
+                  {credDistribution.map(({ name, score }) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </li>
+          )}
+          <li className={styles.outline}>
+            <h2>Links</h2>
+
             <ul>
+              {sheetDataURL && (
+                <li>
+                  <a
+                    href={sheetDataURL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Sheet Data
+                  </a>
+                </li>
+              )}
+              {epochURL && (
+                <li>
+                  <a
+                    href={epochURL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Epoch
+                  </a>
+                </li>
+              )}
               {declarationURL && (
                 <li>
                   <a
