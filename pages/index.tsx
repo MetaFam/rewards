@@ -334,7 +334,7 @@ export default function Home() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    SourceCred Declaration
+                    SourceCred Declaration <em>(declaration.json)</em>
                   </a>
                 </li>
               )}
@@ -345,7 +345,7 @@ export default function Home() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Identity Proposals
+                    Identity Proposals <em>(identityProposals.json)</em>
                   </a>
                 </li>
               )}
@@ -356,7 +356,7 @@ export default function Home() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Weighted Graph
+                    Weighted Graph <em>(graph.json)</em>
                   </a>
                 </li>
               )}
