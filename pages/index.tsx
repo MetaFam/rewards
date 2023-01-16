@@ -3,11 +3,11 @@ import Head from 'next/head'
 import { useCallback, useEffect, useState } from 'react'
 import Script from 'next/script'
 import {
-  Maybe, Circle, Epoch, NamedScore, CredScore,
+  Maybe, Circle, Epoch, NamedScore, CredScore, Participant,
 } from '../types'
-import { processSheet, participants, getSheet, toId } from '../lib/process'
+import { processSheet, participants, getSheet, toId, sum } from '../lib/process';
 import {
-  buildGraph, declaration as scDeclaration, pluginName, identityProposals
+  buildGraph, declaration as scDeclaration, pluginName, identityProposals, graphToJSON
 } from '../lib/sourcecred/graph';
 import {
   credRank,
@@ -16,50 +16,123 @@ import {
 import { useGAPI } from '../lib/useGAPI'
 import styles from '../styles/Home.module.css'
 
-const Circle = ({ circle }: { circle: Circle }) => (
-  <section key={circle.name}>
-    <h3>{circle.name}</h3>
-    <table className={
-      ['table', 'notch'].map((p) => styles[p]).join(' ')
-    }>
-      <thead><tr>
-        <th></th>
-        {circle.actees.map(({ name }) => (
-          <th key={name}>{name}</th>
-        ))}
-      </tr></thead>
-      <tbody>
-        {circle.actors.map(({ id: actorId, name: actor }) => (
-          <tr key={actorId}>
-            <th>{actor}</th>
-            {circle.actees.map(({ id: acteeId, name: actee }) => {
-              const { allotments: allots } = (
-                circle.distribution[acteeId] ?? {}
-              )
-              const title = `${actor}→${actee}`
-              const allot = allots?.[actorId]
+const Circle = ({ circle }: { circle: Circle }) => {
+  const totalTotal = sum(Object.values(circle.totals))
 
+  return (
+    <section>
+      <h3>{circle.name}</h3>
+      <table className={
+        ['table', 'notch'].map((p) => styles[p]).join(' ')
+      }>
+        <thead><tr>
+          <th></th>
+          {circle.actees.map(({ name }) => (
+            <th key={name}>{name}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {circle.actors.map(({ id: actorId, name: actor }) => (
+            <tr key={actorId}>
+              <th>{actor}</th>
+              {circle.actees.map(({ id: acteeId, name: actee }) => {
+                const { allotments: allots } = (
+                  circle.distribution[acteeId] ?? {}
+                )
+                const title = `${actor}→${actee}`
+                const allot = allots?.[actorId]
+
+                return (
+                  <td {...{ title }} key={title}>
+                    {!!allot ? allot : ''}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+          <tr className={styles.total}>
+            <th>Total:</th>
+            {circle.actees.map(({ id, name }) => {
+              const { allotments: allots } = (
+                circle.distribution[id] ?? {}
+              )
+              const localTotal = sum(Object.values(allots))
               return (
-                <td {...{ title }} key={title}>
-                  {!!allot ? allot : ''}
+                <td key={id} title={`Total: ${name}`}>
+                  {localTotal}{' '}
+                  ({(localTotal / totalTotal * 100).toFixed(2)}%)
                 </td>
               )
             })}
           </tr>
-        ))}
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
+const Distribution = (
+  { participants, dist }:
+  {
+    participants: Record<string, Participant>
+    dist: Record<string, number>
+  }
+) => {
+  const [seed, setSeed] = useState(1000)
+
+  return (
+    <table className={styles.table}>
+      <thead><tr>
+        <th>Participant</th>
+        <th>Score</th>
+        <th>Percent</th>
+        <th>
+          <input
+            type="number"
+            value={seed}
+            onChange={({ target: { value } }) => {
+              setSeed(parseInt(value, 10))
+            }}
+            id={styles.seed}
+          />{' '}
+          SEEDs
+        </th>
+      </tr></thead>
+      <tbody>
+        {(() => {
+          const total = sum(Object.values(dist))
+          return (
+            Object.keys(dist).sort().map(
+              (id) => {
+                const score = dist[id]
+                const ratio = score / total
+                return (
+                  <tr key={id}>
+                    <td>{participants[id].name}</td>
+                    <td>{score}</td>
+                    <td>{(ratio * 100).toFixed(2)}%</td>
+                    <td>{(ratio * seed).toFixed(2)}</td>
+                  </tr>
+                )
+              }
+            )
+          )
+        })()}
       </tbody>
     </table>
-  </section>
-)
+  )
+}
 
 export default function Home() {
+  const [authRequired, setAuthRequired] = useState(false)
   const [epoch, setEpoch] = useState<Maybe<Epoch>>(null)
-  const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [epochURL, setEpochURL] = useState<Maybe<string>>(null)
   const [sheetDataURL, setSheetDataURL] = useState<Maybe<string>>(null)
+  const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
+  const [identitiesURL, setIdentitiesURL] = useState<Maybe<string>>(null)
   const [credDistribution, setDist] = (
-    useState<Maybe<Array<NamedScore>>>(null)
+    useState<Maybe<Record<string, number>>>(null)
   )
 
   const {
@@ -97,13 +170,19 @@ export default function Home() {
     const test = async () => {
       if(epoch) {
         const weightedGraph = await buildGraph({ epochs: [epoch] })
-        const graphJSON = JSON.stringify(weightedGraph, null, 2)
-        const graphBlob = new Blob([graphJSON], { type: 'text/json' })
-        setGraphURL(window.URL.createObjectURL(graphBlob))
+        const graphJSON = graphToJSON(weightedGraph)
+        setGraphURL(window.URL.createObjectURL(
+          new Blob([graphJSON], { type: 'text/json' })
+        ))
 
         const identities = identityProposals({
           pluginName, participants: Object.values(participants)
         })
+
+        const identitiesJSON = JSON.stringify(identities, null, 2)
+        setIdentitiesURL(window.URL.createObjectURL(
+          new Blob([identitiesJSON], { type: 'text/json' })
+        ))
 
         const graphAPIOutput = await graphAPI({
           pluginId: pluginName,
@@ -115,9 +194,11 @@ export default function Home() {
         const { credGrainView } = await credRank({
           ledger: graphAPIOutput.ledger, weightedGraph
         })
-        setDist(credGrainView.participants().map(
-          ({ identity: { name }, cred: score }: CredScore) => (
-            { name, score }
+        setDist(Object.fromEntries(
+          credGrainView.participants().map(
+            ({ identity: { name }, cred: score }: CredScore) => (
+              [name, score]
+            )
           )
         ))
       }
@@ -149,18 +230,20 @@ export default function Home() {
       </header>
       <main className={styles.main}>
         <ol id={styles.steps}>
-          <li>
-            <form onSubmit={((evt) => {
-              evt.preventDefault()
-              connect()
-            })}>
-              <input
-                type="submit"
-                value={`Connect${authenticated ? 'ed' : ''} to Google`}
-                disabled={authenticated || !tokenClient}
-              />
-            </form>
-          </li>
+          {authRequired && (
+            <li>
+              <form onSubmit={((evt) => {
+                evt.preventDefault()
+                connect()
+              })}>
+                <input
+                  type="submit"
+                  value={`Connect${authenticated ? 'ed' : ''} to Google`}
+                  disabled={authenticated || !tokenClient}
+                />
+              </form>
+            </li>
+          )}
           <li className={styles.flex}>
             <form onSubmit={(async (evt) => {
                 evt.preventDefault()
@@ -169,7 +252,14 @@ export default function Home() {
                 const sheet = (
                   form.elements.namedItem('sheet') as HTMLInputElement
                 )
-                await extractTables(sheet.value)
+                try {
+                  await extractTables(sheet.value)
+                } catch(err) {
+                  if((err as { status: number }).status === 403) {
+                    alert('Authentication required.')
+                    setAuthRequired(true)
+                  }
+                }
               })}>
               <fieldset id={styles.sheet}>
                 <legend>Spreadsheet URL</legend>
@@ -183,7 +273,7 @@ export default function Home() {
                   title={
                     authenticated ? 'Process Spreadsheet' : 'Authenticate'
                   }
-                  disabled={!authenticated}
+                  // disabled={!authenticated}
                 />
               </fieldset>
             </form>
@@ -201,24 +291,14 @@ export default function Home() {
               )}
             </li>
           )}
-          {credDistribution && (
+          {epoch && credDistribution && (
             <li className={styles.outline}>
               <h2>Distribution</h2>
 
-              <table className={styles.table}>
-                <thead><tr>
-                  <th>Participant</th>
-                  <th>Score</th>
-                </tr></thead>
-                <tbody>
-                  {credDistribution.map(({ name, score }) => (
-                    <tr key={name}>
-                      <td>{name}</td>
-                      <td>{score}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <Distribution
+                dist={credDistribution}
+                participants={epoch.participants}
+              />
             </li>
           )}
           <li className={styles.outline}>
@@ -255,6 +335,28 @@ export default function Home() {
                     rel="noreferrer"
                   >
                     SourceCred Declaration
+                  </a>
+                </li>
+              )}
+              {identitiesURL && (
+                <li>
+                  <a
+                    href={identitiesURL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Identity Proposals
+                  </a>
+                </li>
+              )}
+              {graphURL && (
+                <li>
+                  <a
+                    href={graphURL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Weighted Graph
                   </a>
                 </li>
               )}

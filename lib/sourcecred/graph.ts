@@ -3,7 +3,7 @@ import cred2 from 'sourcecred'
 import type {
   SourceArg, Addresser, Epoch, Circle, Participant,
 } from '../../types'
-import { toId, participantNamed } from '../process';
+import { toId, participantNamed, sum } from '../process';
 
 // Different imports behave differently between Node & the browser
 const sc = cred1 ?? cred2
@@ -25,6 +25,16 @@ export const addr = (() => {
       args.push(type === 'node' ? nodePrefix : edgePrefix)
       src = Array.isArray(src) ? src : [src]
       const name = title ?? src[0].type
+
+      if(name === 'participant' && src.length === 1) {
+        const { nodeAddressForEthAddress } = (
+          sc.plugins.ethereum.utils.address
+        )
+        const { address, name } = src[0] as Participant
+        if(!address) throw new Error(`No address found for ${name}.`)
+        return nodeAddressForEthAddress(address)
+      }
+
       if(name) args.push(name.toUpperCase())
 
       const ids = (
@@ -147,12 +157,13 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
       dst: addr(top),
     })
 
-    const distribute = (src: Circle) => {
+    // Creates a graph where GIVE gifts are the edge weights
+    const weightDistribute = (src: Circle) => {
       Object.entries(src.distribution).map(
         ([, { destination: dest, allotments: allots }]) => {
           graph.addNode({
             address: addr(dest),
-            description: `${dest.type}:${dest.name}`,
+            description: `${dest.type}: ${dest.name}`,
             timestampMs: null,
           })
 
@@ -177,15 +188,49 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
           })
 
           if((dest as Circle).distribution) {
-            distribute(dest as Circle)
+            weightDistribute(dest as Circle)
           }
         }
       )
     }
 
+    // Create a graph where the relative percentages received
+    // are the edge weights
+    const probabilityDistribute = (src: Circle) => {
+      const totalTotal = sum(Object.values(src.totals))
+      Object.entries(src.totals).forEach(([destId, amount]) => {
+        const { destination: dest } = src.distribution[destId]
+
+        graph.addNode({
+          address: addr(dest),
+          description: `${dest.type}: ${dest.name}`,
+          timestampMs: null,
+        })
+
+        const address = addr.distributed_to([src, dest])
+
+        graph.addEdge({
+          address,
+          timestamp: epoch.end.getTime(),
+          src: addr(src),
+          dst: addr(dest),
+        })
+
+        weights.edgeWeights.set(
+          address,
+          { forwards: amount / totalTotal, backwards: 0 },
+        )
+
+        if((dest as Circle).distribution) {
+          probabilityDistribute(dest as Circle)
+        }
+      })
+    }
+
+
     if(!epoch.top) throw new Error('No top circle set.')
 
-    distribute(epoch.top)
+    weightDistribute(epoch.top)
   }
 
   return { graph, weights }
@@ -205,4 +250,10 @@ export const identityProposals = (
       address: addr(participant),
     }
   }))
+)
+
+export const graphToJSON = (graph: typeof sc.core.weightedGraph) => (
+  JSON.stringify(
+    sc.core.weightedGraph.toJSON(graph), null, 2
+  )
 )

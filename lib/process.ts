@@ -2,6 +2,8 @@ import { Circle, Maybe, Participant, UnresolvedCircle } from '../types'
 
 class TableSearchError extends Error {}
 
+export const sum = (arr: Array<number>) => arr.reduce((a, b) => a + b, 0)
+
 const pullCircle = (
   { start, values }:
   {
@@ -41,6 +43,16 @@ const pullCircle = (
       return [actor.id, dist]
     })
   )
+
+  const totals = Object.fromEntries(
+    actees.map((actee) => [
+      toId(actee),
+      sum(Object.values(distribution).map(
+        (dist) => dist[toId(actee)] ?? 0
+      ))
+    ])
+  )
+
   const circle = {
     type: 'circle' as 'circle',
     id: toId(name),
@@ -53,9 +65,11 @@ const pullCircle = (
           {
             destination: id,
             allotments: Object.fromEntries(
-              actors.map((actor) => (
-                [actor.id, distribution[actor.id]?.[id] ?? 0]
-              )),
+              actors.map((actor) => {
+                const amount = distribution[actor.id]?.[id]
+                return (amount ? [actor.id, amount] : [])
+              })
+              .filter((x) => x.length > 0)
             ),
           },
         ]
@@ -63,6 +77,7 @@ const pullCircle = (
     ),
     actors,
     actees,
+    totals,
   }
 
   return {
@@ -102,6 +117,7 @@ export const toId = (str: string) => (
 )
 
 export const participants: Record<string, Participant> = {}
+export const addresses: Record<string, string> = {}
 export const participantNamed = (name: string) => {
   const id = toId(name)
 
@@ -112,14 +128,16 @@ export const participantNamed = (name: string) => {
   let participant = participants[id]
   if(!participant) {
     participants[id] = participant = (
-      { type: 'participant', name, id }
+      { type: 'participant', name, id, address: addresses[id] }
     )
   }
+  participant.address ??= addresses[id]
+
   return participant
 }
 
 export const getSheet = async (id: string) => {
-  const api = (gapi.client as any).sheets
+  const api = (window.gapi.client as any).sheets
   const response = await api.spreadsheets.values.get({
     spreadsheetId: id,
     range: '!A1:Q100',
@@ -147,9 +165,9 @@ export const processSheet = async (
 
   const unresCircles: Record<string, UnresolvedCircle> = {}
   let topId: Maybe<string> = null
+  let start = 0
   try {
-    let start = 0
-    while(true) {
+    for(;;) {
       const info = pullCircle({ start, values })
       const id = toId(info.name)
       start = info.endRow + 1
@@ -167,6 +185,14 @@ export const processSheet = async (
     }
   } catch(err) {
     if(!(err instanceof TableSearchError)) throw err
+  }
+
+  if(values[++start][0] === 'Players') {
+    while(values[++start]?.length > 0) {
+      const [name, address] = values[start].slice(1)
+      console.info({ name, address })
+      addresses[toId(name)] = address
+    }
   }
 
   if(!topId) throw new Error('No top circle found.')

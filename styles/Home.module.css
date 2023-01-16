@@ -20,6 +20,10 @@
     }
   }
 
+  & thead th {
+    text-align: center;
+  }
+
   & th, & td {
     border: 1px solid;
     padding: 0.25em 0.5em;
@@ -81,6 +85,14 @@
     border-top: none;
     border-left: none;
   }
+}
+
+.total > *{
+  background-color: #FF610555
+}
+
+#seed {
+  width: 4em;
 }
 
 #splash {

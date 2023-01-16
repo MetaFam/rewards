@@ -102,6 +102,10 @@ a {
   text-decoration: none;
 }
 
+a:hover {
+  -webkit-text-stroke: 0.5px;
+}
+
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;

@@ -66,6 +66,7 @@ export type CircleBase = {
   id: string
   name: string
   actors: Array<Participant>
+  totals: Record<string, number>
 }
 
 export type UnresolvedCircle = CircleBase & {
@@ -94,6 +95,7 @@ export type Participant = {
   type: 'participant'
   id: string
   name: string
+  address: string
 }
 
 export type NamedScore = {
