@@ -213,12 +213,13 @@ export default function Home() {
         <title>Coorditang</title>
         <meta
           name="description"
-          content="Multitiered Coordinape Distribution"
+          content="Coorditang: Multitiered Coordinape Distribution"
         />
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1"
         />
+        <meta property="og:image"  content="splash.png"/>
         <link rel="shortcut icon" href="/logo.svg"/>
       </Head>
       <header>
