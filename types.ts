@@ -109,3 +109,7 @@ export type CredScore = {
   }
   cred: number
 }
+
+export type PapaResult = {
+  data: Array<any>
+}

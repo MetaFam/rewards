@@ -3,7 +3,7 @@ import Head from 'next/head'
 import { useCallback, useEffect, useState } from 'react'
 import Script from 'next/script'
 import {
-  Maybe, Circle, Epoch, NamedScore, CredScore, Participant,
+  Maybe, Circle, Epoch, NamedScore, CredScore, Participant, PapaResult,
 } from '../types'
 import { processSheet, participants, getSheet, toId, sum, toURL } from '../lib/process';
 import {
@@ -133,8 +133,8 @@ export default function Home() {
   const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
   const [identitiesURL, setIdentitiesURL] = useState<Maybe<string>>(null)
-  const [nodes, setNodes] = useState<Maybe<Array<any>>>(null)
-  const [edges, setEdges] = useState<Maybe<Array<any>>>(null)
+  const [nodes, setNodes] = useState<Maybe<PapaResult>>(null)
+  const [edges, setEdges] = useState<Maybe<PapaResult>>(null)
   const [credDistribution, setDist] = (
     useState<Maybe<Record<string, number>>>(null)
   )
@@ -209,8 +209,8 @@ export default function Home() {
         const { nodes, edges } = (
           await credData({ credGraph, ledger })
         )
-        setNodes(nodes as unknown as Array<any>)
-        setEdges(edges as unknown as Array<any>)
+        setNodes(nodes as unknown as PapaResult)
+        setEdges(edges as unknown as PapaResult)
       }
     }
 
