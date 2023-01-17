@@ -5,15 +5,17 @@ import Script from 'next/script'
 import {
   Maybe, Circle, Epoch, NamedScore, CredScore, Participant,
 } from '../types'
-import { processSheet, participants, getSheet, toId, sum } from '../lib/process';
+import { processSheet, participants, getSheet, toId, sum, toURL } from '../lib/process';
 import {
   buildGraph, declaration as scDeclaration, pluginName, identityProposals, graphToJSON
 } from '../lib/sourcecred/graph';
 import {
+  credData,
   credRank,
   graphAPI
 } from '../lib/sourcecred/test'
 import { useGAPI } from '../lib/useGAPI'
+import { load as loadNeo4j } from '../lib/neo4j'
 import styles from '../styles/Home.module.css'
 
 const Circle = ({ circle }: { circle: Circle }) => {
@@ -131,6 +133,8 @@ export default function Home() {
   const [declarationURL, setDeclarationURL] = useState<Maybe<string>>(null)
   const [graphURL, setGraphURL] = useState<Maybe<string>>(null)
   const [identitiesURL, setIdentitiesURL] = useState<Maybe<string>>(null)
+  const [nodes, setNodes] = useState<Maybe<Array<any>>>(null)
+  const [edges, setEdges] = useState<Maybe<Array<any>>>(null)
   const [credDistribution, setDist] = (
     useState<Maybe<Record<string, number>>>(null)
   )
@@ -184,16 +188,16 @@ export default function Home() {
           new Blob([identitiesJSON], { type: 'text/json' })
         ))
 
-        const graphAPIOutput = await graphAPI({
+        const { ledger } = await graphAPI({
           pluginId: pluginName,
           weightedGraph,
           declaration: scDeclaration,
           identityProposals: identities,
         })
 
-        const { credGrainView } = await credRank({
-          ledger: graphAPIOutput.ledger, weightedGraph
-        })
+        const { credGrainView, credGraph } = (
+          await credRank({ ledger, weightedGraph })
+        )
         setDist(Object.fromEntries(
           credGrainView.participants().map(
             ({ identity: { name }, cred: score }: CredScore) => (
@@ -201,6 +205,12 @@ export default function Home() {
             )
           )
         ))
+
+        const { nodes, edges } = (
+          await credData({ credGraph, ledger })
+        )
+        setNodes(nodes as unknown as Array<any>)
+        setEdges(edges as unknown as Array<any>)
       }
     }
 
@@ -306,63 +316,100 @@ export default function Home() {
             <h2>Links</h2>
 
             <ul>
-              {sheetDataURL && (
-                <li>
-                  <a
-                    href={sheetDataURL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Sheet Data
-                  </a>
-                </li>
-              )}
-              {epochURL && (
-                <li>
-                  <a
-                    href={epochURL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Epoch
-                  </a>
-                </li>
-              )}
-              {declarationURL && (
-                <li>
-                  <a
-                    href={declarationURL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    SourceCred Declaration <em>(declaration.json)</em>
-                  </a>
-                </li>
-              )}
-              {identitiesURL && (
-                <li>
-                  <a
-                    href={identitiesURL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Identity Proposals <em>(identityProposals.json)</em>
-                  </a>
-                </li>
-              )}
-              {graphURL && (
-                <li>
-                  <a
-                    href={graphURL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Weighted Graph <em>(graph.json)</em>
-                  </a>
-                </li>
-              )}
+              {(() => {
+                const links = [
+                  { url: sheetDataURL, label: 'Sheet Data' },
+                  { url: epochURL, label: 'Epoch' },
+                  {
+                    url: declarationURL,
+                    label: <>
+                      SourceCred Declaration <em>(declaration.json)</em>
+                    </>,
+                  },
+                  {
+                    url: identitiesURL,
+                    label: <>
+                      Identity Proposals <em>(identityProposals.json)</em>
+                    </>,
+                  },
+                  {
+                    url: graphURL,
+                    label: <>Weighted Graph <em>(graph.json)</em></>,
+                  },
+                  {
+                    url: toURL(nodes),
+                    label: <>Cred Nodes <em>(nodes.csv)</em></>,
+                  },
+                  {
+                    url: toURL(edges),
+                    label: <>Cred Edges <em>(edges.csv)</em></>,
+                  },
+                ]
+
+                return links.map(
+                  ({ url, label }) => (
+                    url && (
+                      <li key={url}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {label}
+                        </a>
+                      </li>
+                    )
+                  )
+                )
+              })()}
             </ul>
           </li>
+          {nodes && edges && (
+            <li className={styles.outline}>
+              <h2>
+                View In A{' '}
+                <a href="https://sandbox.neo4j.com">
+                  Neo4j Sandbox
+                </a>
+              </h2>
+
+              <form
+                className={styles.column}
+                onSubmit={(evt) => {
+                  evt.preventDefault()
+                  const form = evt.target as HTMLFormElement & {
+                    elements: {
+                      url: HTMLInputElement
+                      pass: HTMLInputElement
+                    }
+                  }
+                  loadNeo4j({
+                    url: form.elements.url.value,
+                    pass: form.elements.pass.value,
+                    nodes, edges,
+                  })
+                }}
+              >
+                <input
+                  id="url" type="url"
+                  placeholder="Connection URL"
+                  autoComplete="url"
+                />
+                <input
+                  id="username"
+                  autoComplete="username"
+                  defaultValue="neo4j"
+                  className={styles.hidden}
+                />
+                <input
+                  id="pass" type="password"
+                  placeholder="Password"
+                  autoComplete="current-password"
+                />
+                <input type="submit" value="Go"/>
+              </form>
+            </li>
+          )}
         </ol>
       </main>
       <Script

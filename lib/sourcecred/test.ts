@@ -1,5 +1,6 @@
 import { sourcecred as cred1 } from 'sourcecred'
 import cred2 from 'sourcecred'
+import Papa from 'papaparse'
 
 // Different imports behave differently between Node & the browser
 const sc = cred1 ?? cred2
@@ -46,4 +47,31 @@ export const credRank = (
   }
 
   return sc.api.credrank.credrank(credrankInput)
+}
+
+const bleed = (iter: Array<string>) => {
+  const list = []
+  for(const item of iter) list.push(item)
+  return list.join('\n')
+}
+
+export const credData = async (
+  { credGraph, ledger }:
+  {
+    credGraph: typeof sc.core.graph.Graph,
+    ledger: typeof sc.ledger.ledger.Ledger
+  }
+) => {
+  const { neo4j: { nodes, edges } } = (
+    await sc.api.analysis.analysis({
+      credGraph,
+      ledger,
+      featureFlags: { neo4j: true },
+    })
+  )
+  const opts = { header: true, dynamicTyping: true }
+  return {
+    nodes: Papa.parse(bleed(nodes), opts),
+    edges: Papa.parse(bleed(edges), opts),
+  }
 }

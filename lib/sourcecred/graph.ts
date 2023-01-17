@@ -230,7 +230,7 @@ export const buildGraph = ({ epochs }: { epochs: Array<Epoch>}) => {
 
     if(!epoch.top) throw new Error('No top circle set.')
 
-    weightDistribute(epoch.top)
+    probabilityDistribute(epoch.top)
   }
 
   return { graph, weights }

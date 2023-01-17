@@ -190,8 +190,7 @@ export const processSheet = async (
   if(values[++start][0] === 'Players') {
     while(values[++start]?.length > 0) {
       const [name, address] = values[start].slice(1)
-      console.info({ name, address })
-      addresses[toId(name)] = address
+      addresses[toId(name)] = address.toLowerCase()
     }
   }
 
@@ -254,4 +253,16 @@ export const processSheet = async (
   })
 
   return { sheetName, circles, epoch, data: values }
+}
+
+export const toURL = (obj: unknown) => {
+  if(obj == null) return null
+  if(typeof window === 'undefined') return null
+
+  return window.URL.createObjectURL(
+    new Blob(
+      [JSON.stringify(obj, null, 2)],
+      { type: 'text/json' },
+    )
+  )
 }

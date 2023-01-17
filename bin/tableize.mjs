@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import data from './contentRingDec2022.json' assert { type: 'json' }
+import fs from 'fs'
+
+const [filename] = process.argv.slice(2)
+const data = JSON.parse(
+  fs.readFileSync(filename, 'utf8')
+)
 
 const table = {}
 
