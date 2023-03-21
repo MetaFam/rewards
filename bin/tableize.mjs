@@ -128,7 +128,7 @@ const distributionQuery = gql`
 const addresses = {}
 
 await Promise.all(
-  argv.epoch.split(/,;\s/).map(async (id) => {
+  argv.epoch.split(/[,;\s]/g).map(async (id) => {
     const { data: { epochs: [epoch] } } = await apollo.query({
       query: distributionQuery,
       variables: { id: Number(id) },
@@ -172,3 +172,15 @@ await Promise.all(
     fs.writeFileSync(filename, out)
   })
 )
+
+const entries = Object.entries(addresses)
+entries.sort((a, b) => a[0].localeCompare(b[0]))
+
+const out = entries.map((line) => line.join(',')).join("\n")
+
+const csv = `${argv.epoch}.addresses.csv`
+const filename = fileURLToPath(new URL(`../output/${csv}`, import.meta.url))
+
+console.info(`Writing ${filename}…`)
+
+fs.writeFileSync(filename, out)
