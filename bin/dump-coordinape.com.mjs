@@ -42,6 +42,7 @@ const argv = await args.argv
 const dateFor = (date) => new Date(date).toISOString().split('T')[0]
 
 if(!argv.auth) {
+  args.showHelp()
   console.error('No auth token provided')
   process.exit(4)
 }
@@ -137,10 +138,21 @@ await Promise.all(
     const table = {}
 
     epoch.token_gifts.forEach(({
-      sender: { profile: { name: sender } },
-      recipient: { address: toAddr, profile: { name: recipient } },
-      tokens,
+      sender: senderInfo, recipient: recipientInfo, tokens,
     }) => {
+      if(recipientInfo == null) {
+        console.warn(`No recipient for ${senderInfo.profile.name}.`)
+        return
+      }
+      if(senderInfo == null) {
+        console.warn(`No sender for ${recipientInfo.profile.name}.`)
+        return
+      }
+      
+      const { profile: { name: sender } } = senderInfo
+      const {
+        address: toAddr, profile: { name: recipient }
+      } = recipientInfo
       table[sender] ??= {}
       table[sender][recipient] = tokens
       addresses[recipient] = toAddr
