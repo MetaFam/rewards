@@ -42,7 +42,7 @@ const distributionQuery = gql`
         id
 
       }
-      
+
       token_gifts {
         recipient {
           address
